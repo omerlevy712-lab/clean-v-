@@ -47,6 +47,9 @@ function resetGreenV() {
     range.setValues(values);
     SpreadsheetApp.flush();
   }
+
+  Logger.log('נסרקו ' + values.length + ' שורות בעמודה B. אופסו ' + changed + ' תאים מ-"'
+             + VALUE_FROM + '" ל-"' + VALUE_TO + '".');
   return changed;
 }
 
@@ -55,6 +58,7 @@ function resetGreenV() {
  * הקביעה מחדש נמצאת ב-finally כדי שהשרשרת לא תישבר גם אם היתה שגיאה.
  */
 function weeklyReset() {
+  Logger.log('הרצה שבועית התחילה: ' + new Date());
   try {
     resetGreenV();
   } finally {
@@ -90,6 +94,7 @@ function scheduleNextRun() {
   next.setDate(next.getDate() + daysAhead);
 
   ScriptApp.newTrigger(HANDLER).timeBased().at(next).create();
+  Logger.log('נקבע טריגר להרצה הבאה: ' + next);
   return next;
 }
 
@@ -98,11 +103,51 @@ function scheduleNextRun() {
  */
 function removeTriggers() {
   var triggers = ScriptApp.getProjectTriggers();
+  var removed = 0;
   for (var i = 0; i < triggers.length; i++) {
     if (triggers[i].getHandlerFunction() === HANDLER) {
       ScriptApp.deleteTrigger(triggers[i]);
+      removed++;
     }
   }
+  if (removed > 0) Logger.log('נמחקו ' + removed + ' טריגרים ישנים.');
+  return removed;
+}
+
+/**
+ * בדיקת מצב: מדפיסה ללוג האם התזמון פעיל ומתי ההרצה הבאה.
+ * להרצה ידנית בכל פעם שרוצים לוודא שהכל חי.
+ */
+function checkStatus() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  Logger.log('קובץ מחובר: ' + (ss ? ss.getName() : 'אין! הסקריפט לא מקושר לגיליון'));
+  Logger.log('אזור זמן הפרויקט: ' + Session.getScriptTimeZone());
+
+  var triggers = ScriptApp.getProjectTriggers().filter(function (t) {
+    return t.getHandlerFunction() === HANDLER;
+  });
+
+  if (triggers.length === 0) {
+    Logger.log('אין טריגר פעיל. צריך להריץ את setup.');
+  } else {
+    Logger.log('יש ' + triggers.length + ' טריגר פעיל לפונקציה ' + HANDLER + '.');
+  }
+
+  var sheet = ss ? ss.getSheetByName(SHEET_NAME) : null;
+  if (!sheet) {
+    Logger.log('שים לב: לא נמצאה לשונית בשם "' + SHEET_NAME + '".');
+    return;
+  }
+
+  var lastRow = sheet.getLastRow();
+  var count = 0;
+  if (lastRow >= FIRST_ROW) {
+    var vals = sheet.getRange(FIRST_ROW, COLUMN, lastRow - FIRST_ROW + 1, 1).getValues();
+    for (var j = 0; j < vals.length; j++) {
+      if (typeof vals[j][0] === 'string' && vals[j][0].trim() === VALUE_FROM) count++;
+    }
+  }
+  Logger.log('כרגע יש ' + count + ' תאים עם "' + VALUE_FROM + '" בעמודה B.');
 }
 
 /**
@@ -114,6 +159,7 @@ function onOpen() {
     .addItem('אפס עכשיו את ה-v בעמודה B', 'menuResetNow')
     .addItem('הפעל/רענן תזמון שבועי', 'menuSetup')
     .addItem('בטל תזמון שבועי', 'menuRemove')
+    .addItem('בדוק מצב', 'menuStatus')
     .addToUi();
 }
 
@@ -130,4 +176,9 @@ function menuSetup() {
 function menuRemove() {
   removeTriggers();
   SpreadsheetApp.getUi().alert('התזמון בוטל.');
+}
+
+function menuStatus() {
+  checkStatus();
+  SpreadsheetApp.getUi().alert('הדוח נכתב ליומן הביצוע ב-Apps Script (View > Logs).');
 }
